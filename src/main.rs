@@ -1,15 +1,21 @@
 mod color;
+mod hit_record;
 pub mod ray;
 pub mod vec3;
+mod rtweekend;
+
+use std::sync::Arc;
 
 use crate::{
-    color::{Color, write_color},
-    ray::Ray,
-    vec3::{Point3, Vec3, unit_vector},
+    color::{Color, write_color}, hit_record::{Hittable, HittableList, Sphere}, ray::Ray, vec3::{Point3, Vec3, unit_vector}
 };
 
-fn ray_color(ray: &Ray) -> Color {
-    let unit_direction = unit_vector(&ray.direction());
+fn ray_color(ray: &Ray, world: &dyn Hittable) -> Color {
+    if let Some(rec) = world.hit(ray, 0.0, rtweekend::INFINITY) {
+        return 0.5 * (rec.normal + Color::new(1.0, 1.0, 1.0));
+    }
+
+    let unit_direction = unit_vector(ray.direction());
     let a = 0.5 * (unit_direction.y() + 1.0);
     return (1.0 - a) * Color::new(1.0, 1.0, 1.0) + a * Color::new(0.5, 0.7, 1.0);
 }
@@ -18,11 +24,16 @@ fn main() {
     // Image
     let aspect_ratio: f64 = 16.0 / 9.0;
     // Calculate the image height, and ensure that it's at least 1.
-    let image_width: u64 = 256;
+    let image_width: u64 = 512;
     let mut image_height = (image_width as f64 / aspect_ratio) as u64;
     if image_height < 1 {
         image_height = 1;
     }
+
+     // World
+     let mut world = HittableList::new();
+     world.add(Arc::new(Sphere::new(Vec3::SPHERE_CENTER, 0.5)));
+     world.add(Arc::new(Sphere::new(Point3::new(0.0, -100.5, -1.0), 100.0)));
 
     // Camera
     let focal_length = 1.0;
@@ -52,7 +63,7 @@ fn main() {
             let ray_direction = pixel_center - camera_center;
             let ray = Ray::new(camera_center, ray_direction);
 
-            let pixel_color = ray_color(&ray);
+            let pixel_color = ray_color(&ray, &world);
             write_color(pixel_color);
         }
     }

@@ -1,0 +1,123 @@
+use std::sync::Arc;
+
+use crate::{
+    ray::Ray,
+    vec3::{Point3, Vec3},
+};
+
+pub struct HitRecord {
+    pub p: Point3,
+    pub normal: Vec3,
+    pub t: f64,
+    pub front_face: bool,
+}
+
+impl HitRecord {
+    pub fn new(p: Point3, normal: Vec3, t: f64, front_face: bool) -> Self {
+        let normal = if front_face {
+            normal
+        } else {
+            -normal
+        };
+
+        Self {
+            p,
+            normal,
+            t,
+            front_face,
+        }
+    }
+
+    pub fn set_face_normal(&mut self, r: Ray, outward_normal: Vec3) {
+        // Sets the hit record normal vector.
+        // NOTE: the parameter `outward_normal` is assumed to have unit length.
+        self.front_face = r.direction().dot(outward_normal) < 0.0;
+        self.normal = if self.front_face {
+            outward_normal
+        } else {
+            -outward_normal
+        };
+    }
+}
+
+pub trait Hittable {
+    fn hit(&self, r: &Ray, ray_tmin: f64, ray_tmax: f64) -> Option<HitRecord>;
+}
+
+pub struct Sphere {
+    center: Point3,
+    radius: f64,
+}
+
+impl Sphere {
+    pub fn new(center: Point3, radius: f64) -> Self {
+        Self { center, radius }
+    }
+}
+
+impl Hittable for Sphere {
+    fn hit(&self, r: &Ray, ray_tmin: f64, ray_tmax: f64) -> Option<HitRecord> {
+        let oc = self.center - r.origin();
+        let a = r.direction().len_squared();
+        let h = r.direction().dot(oc);
+        let c = oc.len_squared() - self.radius * self.radius;
+
+        let discriminant = h * h - a * c;
+        if discriminant < 0.0 {
+            return None;
+        }
+
+        let sqrtd = discriminant.sqrt();
+
+        // Find the nearest root that lies in the acceptable range.
+        let mut root = (h - sqrtd) / a;
+        if root <= ray_tmin || ray_tmax <= root {
+            root = (h + sqrtd) / a;
+            if root <= ray_tmin || ray_tmax <= root {
+                return None;
+            }
+        }
+
+        let t = root;
+        let p = r.at(t);
+        let outward_normal = (p - self.center) / self.radius;
+        let front_face = r.direction().dot(outward_normal) < 0.0;
+        let hit_record = HitRecord::new(p, outward_normal, t, front_face);
+
+        return Some(hit_record);
+    }
+}
+
+pub struct HittableList {
+    pub objects: Vec<Arc<dyn Hittable>>,
+}
+
+impl HittableList {
+    pub fn new() -> Self {
+        Self { objects: Vec::new() }
+    }
+
+    pub fn clear(&mut self) {
+        self.objects.clear();
+    }
+
+    pub fn add(&mut self, object: Arc<dyn Hittable>) {
+        self.objects.push(object);
+    }
+}
+
+impl Hittable for HittableList {
+    fn hit(&self, r: &Ray, ray_tmin: f64, ray_tmax: f64) -> Option<HitRecord> {
+        let mut hit_anything: Option<HitRecord> = None;
+        let mut closest_so_far = ray_tmax;
+
+        for object in &self.objects {
+            if let Some(rec) = object.hit(r, ray_tmin, closest_so_far) {
+                closest_so_far = rec.t;
+                hit_anything = Some(rec);
+            }
+        }
+
+        hit_anything
+    }
+}

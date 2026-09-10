@@ -25,17 +25,21 @@ A running log of progress on this project. Written after each work session - mai
 
 ---
 
-## Session 2 - [DATE]
+## Session 2 - 10.09.2026
 
-**Book progress:** ...
+**Book progress:** Chapter 6.7, "Common Constants and Utility Functions"
 
 **What I did:**
--
+- Created the `Hittable` trait and `HitRecord` struct.
+- Converted the C++ mutable reference pattern (`out parameters`) to Rust's `Option<HitRecord>`. 
+- Implemented the `Sphere` struct.
+- Added `HittableList` to manage multiple objects in the scene using `Vec<Box<dyn Hittable>>`.
+- Added common math constants (infinity, pi) and utilities.
 
 **Things I ran into / fixed:**
--
 
 **Notes to self:**
--
+- Using `Option` instead of mutating a passed reference makes the Rust implementation much cleaner than the C++ original.
+- Chose `Arc<dyn Hittable>` for the object list for now as later multi-threading might be needed.
 
 ---

@@ -8,7 +8,9 @@ pub struct Vec3 {
 }
 
 impl Vec3 {
-    pub fn new(e0: f64, e1: f64, e2: f64) -> Self {
+    pub const SPHERE_CENTER: Vec3 = Vec3::new(0.0, 0.0, -1.0);
+
+    pub const fn new(e0: f64, e1: f64, e2: f64) -> Self {
         Self { e: [e0, e1, e2] }
     }
 
@@ -33,7 +35,7 @@ impl Vec3 {
     }
 
     #[inline(always)]
-    pub fn dot(&self, rhs: &Vec3) -> f64 {
+    pub fn dot(&self, rhs: Vec3) -> f64 {
         self.e[0] * rhs.e[0] + self.e[1] * rhs.e[1] + self.e[2] * rhs.e[2]
     }
 
@@ -50,8 +52,8 @@ impl Vec3 {
 }
 
 #[inline(always)]
-pub fn unit_vector(v: &Vec3) -> Vec3 {
-    *v / v.len()
+pub fn unit_vector(v: Vec3) -> Vec3 {
+    v / v.len()
 }
 
 impl ops::Add<Vec3> for Vec3 {
