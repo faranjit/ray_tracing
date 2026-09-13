@@ -1,5 +1,7 @@
 use std::ops;
 
+use crate::rtweekend::{random_double, random_double_range};
+
 pub type Point3 = Vec3;
 
 #[derive(Debug, Clone, Copy)]
@@ -12,6 +14,22 @@ impl Vec3 {
 
     pub const fn new(e0: f64, e1: f64, e2: f64) -> Self {
         Self { e: [e0, e1, e2] }
+    }
+
+    pub fn random() -> Self {
+        Vec3 {
+            e: [random_double(), random_double(), random_double()],
+        }
+    }
+
+    pub fn random_range(min: f64, max: f64) -> Self {
+        Vec3 {
+            e: [
+                random_double_range(min, max),
+                random_double_range(min, max),
+                random_double_range(min, max),
+            ],
+        }
     }
 
     pub fn x(&self) -> f64 {
@@ -34,6 +52,10 @@ impl Vec3 {
         self.len_squared().sqrt()
     }
 
+    pub fn sample_square() -> Vec3 {
+        Vec3::new(random_double() - 0.5, random_double() - 0.5, 0.0)
+    }
+
     #[inline(always)]
     pub fn dot(&self, rhs: Vec3) -> f64 {
         self.e[0] * rhs.e[0] + self.e[1] * rhs.e[1] + self.e[2] * rhs.e[2]
@@ -49,11 +71,43 @@ impl Vec3 {
             ],
         }
     }
+
+    #[inline]
+    pub fn random_on_hemisphere(&self) -> Vec3 {
+        let on_unit_sphere = random_unit_vector();
+        if on_unit_sphere.dot(*self) > 0.0 {
+            on_unit_sphere
+        } else {
+            -on_unit_sphere
+        }
+    }
+
+    #[inline(always)]
+    pub fn reflect(&self, n: Vec3) -> Vec3 {
+        *self - 2.0 * self.dot(n) * n
+    }
+
+    #[inline(always)]
+    pub fn near_zero(&self) -> bool {
+        let s = 1e-8;
+        self.e[0].abs() < s && self.e[1].abs() < s && self.e[2].abs() < s
+    }
 }
 
 #[inline(always)]
 pub fn unit_vector(v: Vec3) -> Vec3 {
     v / v.len()
+}
+
+#[inline(always)]
+pub fn random_unit_vector() -> Vec3 {
+    loop {
+        let p = Vec3::random_range(-1.0, 1.0);
+        let lensq = p.len_squared();
+        if 1e-160 < lensq && lensq <= 1.0 {
+            return p / lensq.sqrt();
+        }
+    }
 }
 
 impl ops::Add<Vec3> for Vec3 {

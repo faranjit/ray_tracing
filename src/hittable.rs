@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    ray::Ray,
-    vec3::{Point3, Vec3},
+    interval::Interval, material::Material, ray::Ray, vec3::{Point3, Vec3},
 };
 
 pub struct HitRecord {
@@ -10,21 +9,19 @@ pub struct HitRecord {
     pub normal: Vec3,
     pub t: f64,
     pub front_face: bool,
+    pub mat: Arc<dyn Material>,
 }
 
 impl HitRecord {
-    pub fn new(p: Point3, normal: Vec3, t: f64, front_face: bool) -> Self {
-        let normal = if front_face {
-            normal
-        } else {
-            -normal
-        };
+    pub fn new(p: Point3, normal: Vec3, t: f64, front_face: bool, mat: Arc<dyn Material>) -> Self {
+        let normal = if front_face { normal } else { -normal };
 
         Self {
             p,
             normal,
             t,
             front_face,
+            mat,
         }
     }
 
@@ -41,22 +38,23 @@ impl HitRecord {
 }
 
 pub trait Hittable {
-    fn hit(&self, r: &Ray, ray_tmin: f64, ray_tmax: f64) -> Option<HitRecord>;
+    fn hit(&self, r: &Ray, ray_t: Interval) -> Option<HitRecord>;
 }
 
 pub struct Sphere {
     center: Point3,
     radius: f64,
+    mat: Arc<dyn Material>,
 }
 
 impl Sphere {
-    pub fn new(center: Point3, radius: f64) -> Self {
-        Self { center, radius }
+    pub fn new(center: Point3, radius: f64, mat: Arc<dyn Material>) -> Self {
+        Self { center, radius, mat }
     }
 }
 
 impl Hittable for Sphere {
-    fn hit(&self, r: &Ray, ray_tmin: f64, ray_tmax: f64) -> Option<HitRecord> {
+    fn hit(&self, r: &Ray, ray_t: Interval) -> Option<HitRecord> {
         let oc = self.center - r.origin();
         let a = r.direction().len_squared();
         let h = r.direction().dot(oc);
@@ -71,9 +69,9 @@ impl Hittable for Sphere {
 
         // Find the nearest root that lies in the acceptable range.
         let mut root = (h - sqrtd) / a;
-        if root <= ray_tmin || ray_tmax <= root {
+        if !ray_t.surrounds(root) {
             root = (h + sqrtd) / a;
-            if root <= ray_tmin || ray_tmax <= root {
+            if !ray_t.surrounds(root) {
                 return None;
             }
         }
@@ -82,7 +80,7 @@ impl Hittable for Sphere {
         let p = r.at(t);
         let outward_normal = (p - self.center) / self.radius;
         let front_face = r.direction().dot(outward_normal) < 0.0;
-        let hit_record = HitRecord::new(p, outward_normal, t, front_face);
+        let hit_record = HitRecord::new(p, outward_normal, t, front_face, self.mat.clone());
 
         return Some(hit_record);
     }
@@ -94,7 +92,9 @@ pub struct HittableList {
 
 impl HittableList {
     pub fn new() -> Self {
-        Self { objects: Vec::new() }
+        Self {
+            objects: Vec::new(),
+        }
     }
 
     pub fn clear(&mut self) {
@@ -107,12 +107,12 @@ impl HittableList {
 }
 
 impl Hittable for HittableList {
-    fn hit(&self, r: &Ray, ray_tmin: f64, ray_tmax: f64) -> Option<HitRecord> {
+    fn hit(&self, r: &Ray, ray_t: Interval) -> Option<HitRecord> {
         let mut hit_anything: Option<HitRecord> = None;
-        let mut closest_so_far = ray_tmax;
+        let mut closest_so_far = ray_t.max();
 
         for object in &self.objects {
-            if let Some(rec) = object.hit(r, ray_tmin, closest_so_far) {
+            if let Some(rec) = object.hit(r, Interval::new(ray_t.min(), closest_so_far)) {
                 closest_so_far = rec.t;
                 hit_anything = Some(rec);
             }

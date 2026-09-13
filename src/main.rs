@@ -1,70 +1,50 @@
+mod camera;
 mod color;
-mod hit_record;
+mod hittable;
+mod interval;
+mod material;
 pub mod ray;
-pub mod vec3;
 mod rtweekend;
+pub mod vec3;
 
 use std::sync::Arc;
 
 use crate::{
-    color::{Color, write_color}, hit_record::{Hittable, HittableList, Sphere}, ray::Ray, vec3::{Point3, Vec3, unit_vector}
+    camera::{Camera, CameraConfig}, color::Color, hittable::{HittableList, Sphere}, material::{Lambertian, Metal}, vec3::{Point3, Vec3},
 };
 
-fn ray_color(ray: &Ray, world: &dyn Hittable) -> Color {
-    if let Some(rec) = world.hit(ray, 0.0, rtweekend::INFINITY) {
-        return 0.5 * (rec.normal + Color::new(1.0, 1.0, 1.0));
-    }
-
-    let unit_direction = unit_vector(ray.direction());
-    let a = 0.5 * (unit_direction.y() + 1.0);
-    return (1.0 - a) * Color::new(1.0, 1.0, 1.0) + a * Color::new(0.5, 0.7, 1.0);
-}
-
 fn main() {
-    // Image
-    let aspect_ratio: f64 = 16.0 / 9.0;
-    // Calculate the image height, and ensure that it's at least 1.
-    let image_width: u64 = 512;
-    let mut image_height = (image_width as f64 / aspect_ratio) as u64;
-    if image_height < 1 {
-        image_height = 1;
-    }
+    // Materials
+    let material_ground = Arc::new(Lambertian::new(Color::new(0.8, 0.8, 0.0)));
+    let material_center = Arc::new(Lambertian::new(Color::new(0.1, 0.2, 0.5)));
 
-     // World
-     let mut world = HittableList::new();
-     world.add(Arc::new(Sphere::new(Vec3::SPHERE_CENTER, 0.5)));
-     world.add(Arc::new(Sphere::new(Point3::new(0.0, -100.5, -1.0), 100.0)));
+    let material_left = Arc::new(Metal::new(Color::new(0.8, 0.8, 0.8)));
+    let material_right = Arc::new(Metal::new(Color::new(0.8, 0.6, 0.2)));
+
+    // World
+    let mut world = HittableList::new();
+    world.add(Arc::new(Sphere::new(
+        Point3::new(0.0, -100.5, -1.0),
+        100.0,
+        material_ground,
+    )));
+    world.add(Arc::new(Sphere::new(
+        Point3::new(0.0, 0.0, -1.2),
+        0.5,
+        material_center,
+    )));
+    world.add(Arc::new(Sphere::new(
+        Point3::new(-1.0, 0.0, -1.0),
+        0.5,
+        material_left,
+    )));
+    world.add(Arc::new(Sphere::new(
+        Point3::new(1.0, 0.0, -1.0),
+        0.5,
+        material_right,
+    )));
 
     // Camera
-    let focal_length = 1.0;
-    let viewport_height = 2.0;
-    let viewport_width = viewport_height * (image_width as f64 / image_height as f64);
-    let camera_center = Point3::new(0.0, 0.0, 0.0);
-
-    // Calculate the vectors across the horizontal and down the vertical viewport edges.
-    let viewport_u = Vec3::new(viewport_width, 0.0, 0.0);
-    let viewport_v = Vec3::new(0.0, -viewport_height, 0.0);
-
-    // Calculate the horizontal and vertical delta vectors from pixel to pixel.
-    let pixel_delta_u = viewport_u / image_width;
-    let pixel_delta_v = viewport_v / image_height;
-
-    // Calculate the location of the upper left pixel.
-    let viewport_upper_left =
-        camera_center - Vec3::new(0.0, 0.0, focal_length) - viewport_u / 2 - viewport_v / 2;
-    let pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
-
-    // Render
-    println!("P3\n{} {}\n255", image_width, image_height);
-
-    for j in 0..image_height {
-        for i in 0..image_width {
-            let pixel_center = pixel00_loc + (i * pixel_delta_u) + (j * pixel_delta_v);
-            let ray_direction = pixel_center - camera_center;
-            let ray = Ray::new(camera_center, ray_direction);
-
-            let pixel_color = ray_color(&ray, &world);
-            write_color(pixel_color);
-        }
-    }
+    let camera = Camera::initialize(CameraConfig::new(512, 16.0 / 9.0, 100, 50));
+    camera.render(&world);
 }

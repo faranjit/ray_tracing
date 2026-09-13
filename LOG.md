@@ -43,3 +43,15 @@ A running log of progress on this project. Written after each work session - mai
 - Chose `Arc<dyn Hittable>` for the object list for now as later multi-threading might be needed.
 
 ---
+
+## Session 3 - 13.09.2026
+
+**Book progress:** Chapter 10.5, "A Scene with Metal Spheres"
+
+**What I did:**
+- Added anti-aliasing.
+- Created materials(Metal & Lambertian) and reflection calculated. 
+- Implemented the `Material` traits.
+- Rendered a PPM with 3 spheres at 512x288 resolution.
+
+---
