@@ -7,25 +7,22 @@ pub mod ray;
 mod rtweekend;
 pub mod vec3;
 
-use std::sync::Arc;
-
 use crate::{
     camera::{Camera, CameraConfig},
     color::Color,
-    hittable::{HittableList, Sphere},
-    material::{Dielectric, Lambertian, Metal},
+    hittable::{HittableList, Object},
+    material::Material,
     rtweekend::{random_double, random_double_range},
     vec3::{Point3, Vec3},
 };
 
 fn main() {
     let mut world = HittableList::new();
-    let ground_material = Arc::new(Lambertian::new(Color::new(0.5, 0.5, 0.5)));
-    world.add(Arc::new(Sphere::new(
+    world.add(Object::sphere(
         Point3::new(0.0, -1000.0, 0.0),
         1000.0,
-        ground_material,
-    )));
+        Material::lambertian(Color::new(0.5, 0.5, 0.5)),
+    ));
 
     for a in -11..11 {
         for b in -11..11 {
@@ -40,43 +37,37 @@ fn main() {
                 if choose_mat < 0.8 {
                     // diffuse
                     let albedo = Color::random() * Color::random();
-                    let material = Arc::new(Lambertian::new(albedo));
-                    world.add(Arc::new(Sphere::new(center, 0.2, material)));
+                    world.add(Object::sphere(center, 0.2, Material::lambertian(albedo)));
                 } else if choose_mat < 0.95 {
                     // metal
                     let albedo = Color::random_range(0.5, 1.0);
                     let fuzz = random_double_range(0.0, 0.5);
-                    let material = Arc::new(Metal::new(albedo, fuzz));
-                    world.add(Arc::new(Sphere::new(center, 0.2, material)));
+                    world.add(Object::sphere(center, 0.2, Material::metal(albedo, fuzz)));
                 } else {
                     // glass
-                    let material = Arc::new(Dielectric::new(1.5));
-                    world.add(Arc::new(Sphere::new(center, 0.2, material)));
+                    world.add(Object::sphere(center, 0.2, Material::dielectric(1.5)));
                 }
             }
         }
     }
 
-    let material1 = Arc::new(Dielectric::new(1.5));
-    world.add(Arc::new(Sphere::new(
+    world.add(Object::sphere(
         Point3::new(0.0, 1.0, 0.0),
         1.0,
-        material1,
-    )));
+        Material::dielectric(1.5),
+    ));
 
-    let material2 = Arc::new(Lambertian::new(Color::new(0.4, 0.2, 0.1)));
-    world.add(Arc::new(Sphere::new(
+    world.add(Object::sphere(
         Point3::new(-4.0, 1.0, 0.0),
         1.0,
-        material2,
-    )));
+        Material::lambertian(Color::new(0.4, 0.2, 0.1)),
+    ));
 
-    let material3 = Arc::new(Metal::new(Color::new(0.7, 0.6, 0.5), 0.0));
-    world.add(Arc::new(Sphere::new(
+    world.add(Object::sphere(
         Point3::new(4.0, 1.0, 0.0),
         1.0,
-        material3,
-    )));
+        Material::metal(Color::new(0.7, 0.6, 0.5), 0.0),
+    ));
 
     // Camera
     let config = CameraConfig::default()

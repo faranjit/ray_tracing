@@ -9,11 +9,11 @@ pub struct HitRecord {
     pub normal: Vec3,
     pub t: f64,
     pub front_face: bool,
-    pub mat: Arc<dyn Material>,
+    pub mat: Material,
 }
 
 impl HitRecord {
-    pub fn new(p: Point3, normal: Vec3, t: f64, front_face: bool, mat: Arc<dyn Material>) -> Self {
+    pub fn new(p: Point3, normal: Vec3, t: f64, front_face: bool, mat: Material) -> Self {
         let normal = if front_face { normal } else { -normal };
 
         Self {
@@ -26,18 +26,36 @@ impl HitRecord {
     }
 }
 
+pub enum Object {
+    Sphere(Sphere),
+}
+
+impl Object {
+    pub fn sphere(center: Point3, radius: f64, mat: Material) -> Arc<Self> {
+        Arc::new(Object::Sphere(Sphere::new(center, radius, mat)))
+    }
+}
+
 pub trait Hittable {
     fn hit(&self, r: &Ray, ray_t: Interval) -> Option<HitRecord>;
+}
+
+impl Hittable for Object {
+    fn hit(&self, r: &Ray, ray_t: Interval) -> Option<HitRecord> {
+        match self {
+            Object::Sphere(s) => s.hit(r, ray_t),
+        }
+    }
 }
 
 pub struct Sphere {
     center: Point3,
     radius: f64,
-    mat: Arc<dyn Material>,
+    mat: Material,
 }
 
 impl Sphere {
-    pub fn new(center: Point3, radius: f64, mat: Arc<dyn Material>) -> Self {
+    pub fn new(center: Point3, radius: f64, mat: Material) -> Self {
         Self { center, radius, mat }
     }
 }
@@ -76,7 +94,7 @@ impl Hittable for Sphere {
 }
 
 pub struct HittableList {
-    pub objects: Vec<Arc<dyn Hittable>>,
+    pub objects: Vec<Arc<Object>>,
 }
 
 impl HittableList {
@@ -86,7 +104,7 @@ impl HittableList {
         }
     }
 
-    pub fn add(&mut self, object: Arc<dyn Hittable>) {
+    pub fn add(&mut self, object: Arc<Object>) {
         self.objects.push(object);
     }
 }

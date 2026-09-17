@@ -6,12 +6,36 @@ use crate::{
     vec3::{random_unit_vector, unit_vector},
 };
 
-pub trait Material {
-    fn scatter(&self, _: &Ray, _: &HitRecord) -> Option<(Color, Ray)> {
-        None
+#[derive(Clone, Copy)]
+pub enum Material {
+    Lambertian(Lambertian),
+    Metal(Metal),
+    Dielectric(Dielectric),
+}
+
+impl Material {
+    pub fn lambertian(albedo: Color) -> Self {
+        Material::Lambertian(Lambertian::new(albedo))
+    }
+
+    pub fn metal(albedo: Color, fuzz: f64) -> Self {
+        Material::Metal(Metal::new(albedo, fuzz))
+    }
+
+    pub fn dielectric(refraction_index: f64) -> Self {
+        Material::Dielectric(Dielectric::new(refraction_index))
+    }
+
+    pub fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Color, Ray)> {
+        match self {
+            Material::Lambertian(l) => l.scatter(r_in, rec),
+            Material::Metal(m) => m.scatter(r_in, rec),
+            Material::Dielectric(d) => d.scatter(r_in, rec),
+        }
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Lambertian {
     albedo: Color,
 }
@@ -20,9 +44,7 @@ impl Lambertian {
     pub fn new(albedo: Color) -> Self {
         Self { albedo }
     }
-}
 
-impl Material for Lambertian {
     fn scatter(&self, _: &Ray, rec: &HitRecord) -> Option<(Color, Ray)> {
         let mut scatter_direction = rec.normal + random_unit_vector();
         if scatter_direction.near_zero() {
@@ -34,6 +56,7 @@ impl Material for Lambertian {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Metal {
     albedo: Color,
     fuzz: f64,
@@ -46,9 +69,7 @@ impl Metal {
             fuzz: if fuzz < 1.0 { fuzz } else { 1.0 },
         }
     }
-}
 
-impl Material for Metal {
     fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Color, Ray)> {
         let reflected =
             unit_vector(r_in.direction().reflect(rec.normal)) + (self.fuzz * random_unit_vector());
@@ -61,6 +82,7 @@ impl Material for Metal {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Dielectric {
     refraction_index: f64,
     attenuation: Color,
@@ -74,13 +96,6 @@ impl Dielectric {
         }
     }
 
-    fn reflectance(&self, cosine: f64, refraction_index: f64) -> f64 {
-        let r0 = (1.0 - refraction_index) / (1.0 + refraction_index);
-        (r0 * r0) + (1.0 - r0) * (1.0 - cosine).powf(5.0)
-    }
-}
-
-impl Material for Dielectric {
     fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Color, Ray)> {
         let ri = if rec.front_face {
             1.0 / self.refraction_index
@@ -100,5 +115,10 @@ impl Material for Dielectric {
         };
 
         Some((self.attenuation, Ray::new(rec.p, direction)))
+    }
+
+    fn reflectance(&self, cosine: f64, refraction_index: f64) -> f64 {
+        let r0 = (1.0 - refraction_index) / (1.0 + refraction_index);
+        (r0 * r0) + (1.0 - r0) * (1.0 - cosine).powf(5.0)
     }
 }

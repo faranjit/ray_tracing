@@ -6,6 +6,7 @@ use crate::{
     rtweekend::{self, degrees_to_radians},
     vec3::{Point3, Vec3, random_in_unit_disk, unit_vector},
 };
+use rayon::prelude::*;
 
 pub struct CameraConfig {
     image_width: u64,         // Rendered image width in pixel count
@@ -153,19 +154,29 @@ impl Camera {
         }
     }
 
-    pub fn render(&self, world: &dyn Hittable) {
+    pub fn render(&self, world: &(impl Hittable + Sync)) {
         println!("P3\n{} {}\n255", self.config.image_width, self.image_height);
 
-        for j in 0..self.image_height {
-            for i in 0..self.config.image_width {
-                let mut pixel_color = BLACK;
-                for _ in 0..self.config.samples_per_pixel {
-                    let ray = self.get_ray(i, j);
-                    pixel_color += self.ray_color(&ray, self.config.max_depth, world);
-                }
+        // parallelize the rendering
+        let pixels: Vec<Color> = (0..self.image_height)
+            .into_par_iter()
+            .flat_map(|j| {
+                (0..self.config.image_width)
+                    .map(move |i| {
+                        let mut pixel_color = BLACK;
+                        for _ in 0..self.config.samples_per_pixel {
+                            let ray = self.get_ray(i, j);
+                            pixel_color += self.ray_color(&ray, self.config.max_depth, world);
+                        }
+                        pixel_color * self.config.pixel_samples_scale
+                    })
+                    .collect::<Vec<Color>>()
+            })
+            .collect();
 
-                write_color(pixel_color * self.config.pixel_samples_scale);
-            }
+        // sequential rendering
+        for pixel_color in pixels {
+            write_color(pixel_color);
         }
     }
 

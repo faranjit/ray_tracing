@@ -72,3 +72,17 @@ A running log of progress on this project. Written after each work session - mai
 - Decided to hold off on introducing external crates (like `rayon` for parallelization) or advanced algorithms (like BVH) to keep the codebase strictly aligned with the end-state of the first book.
 
 ---
+
+## Session 5 - 17.09.2026
+
+**Post-book Optimizations: Performance & Multithreading**
+
+**What I did:**
+- **Devirtualization:** Refactored `Material` and `Hittable` (`Object`) from dynamic trait objects (`Arc<dyn Trait>`) to static enums. 
+- **Factory Methods:** Implemented factory functions (e.g., `Material::lambertian`, `Object::sphere`) to keep the scene instantiation clean and hide the enum boilerplate.
+- **Multithreading:** Integrated the `rayon` crate and parallelized the pixel rendering loop using `into_par_iter()`.
+- **Result:** Smashed the render time of the massive final scene (1200x800, 500 samples) from a single-threaded crawl to under 2 minutes.
+
+**Things I ran into / fixed:**
+- Got a compiler error trying to use `Arc<dyn Object>` after switching to enums; fixed by removing the `dyn` keyword since enums use static dispatch.
+- To prevent thread racing on stdout during parallel rendering, split the render pipeline into two stages: computing all pixels into a `Vec<Color>` concurrently, and then writing them to the PPM format sequentially.
