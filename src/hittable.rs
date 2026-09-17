@@ -24,17 +24,6 @@ impl HitRecord {
             mat,
         }
     }
-
-    pub fn set_face_normal(&mut self, r: Ray, outward_normal: Vec3) {
-        // Sets the hit record normal vector.
-        // NOTE: the parameter `outward_normal` is assumed to have unit length.
-        self.front_face = r.direction().dot(outward_normal) < 0.0;
-        self.normal = if self.front_face {
-            outward_normal
-        } else {
-            -outward_normal
-        };
-    }
 }
 
 pub trait Hittable {
@@ -95,10 +84,6 @@ impl HittableList {
         Self {
             objects: Vec::new(),
         }
-    }
-
-    pub fn clear(&mut self) {
-        self.objects.clear();
     }
 
     pub fn add(&mut self, object: Arc<dyn Hittable>) {

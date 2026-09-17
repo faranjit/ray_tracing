@@ -55,3 +55,20 @@ A running log of progress on this project. Written after each work session - mai
 - Rendered a PPM with 3 spheres at 512x288 resolution.
 
 ---
+
+## Session 4 - 16.09.2026
+
+**Book progress:** Finished the book! (Chapters 11 - 14)
+
+**What I did:**
+- Implemented `Dielectric` materials to simulate glass and water, complete with refraction, Snell's law, and Schlick's approximation for total internal reflection.
+- Overhauled the `Camera` to support arbitrary positioning (`look_from`, `look_at`, `vup`) and adjustable Field of View (FOV).
+- Added defocus blur (depth of field) by simulating a physical lens with a defocus disk (`defocus_angle` and `focus_dist`).
+- Refactored `CameraConfig` initialization to use the Builder pattern, eliminating a massive telescoping constructor and keeping `main.rs` extremely clean.
+- Generated the final cover image featuring a generated scene of hundreds of random spheres composed of Lambertian, Metal, and Dielectric materials.
+
+**Things I ran into / fixed:**
+- As expected, render times hit a massive wall with the final random scene. The $O(N)$ intersection checks for every ray against hundreds of spheres brought the single-threaded CPU calculation to a crawl.
+- Decided to hold off on introducing external crates (like `rayon` for parallelization) or advanced algorithms (like BVH) to keep the codebase strictly aligned with the end-state of the first book.
+
+---

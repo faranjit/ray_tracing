@@ -9,7 +9,7 @@ pub const fn degrees_to_radians(degrees: f64) -> f64 {
 
 #[inline(always)]
 pub fn random_double() -> f64 {
-    rand::random_range(0.0..1.0)
+    fastrand_contrib::f64_range(0.0..1.0)
 }
 
 #[inline(always)]

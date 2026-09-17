@@ -1,5 +1,10 @@
 use crate::{
-    color::{BLACK, Color, write_color}, hittable::Hittable, interval::Interval, ray::Ray, rtweekend, vec3::{Point3, Vec3, unit_vector},
+    color::{BLACK, Color, write_color},
+    hittable::Hittable,
+    interval::Interval,
+    ray::Ray,
+    rtweekend::{self, degrees_to_radians},
+    vec3::{Point3, Vec3, random_in_unit_disk, unit_vector},
 };
 
 pub struct CameraConfig {
@@ -8,17 +13,83 @@ pub struct CameraConfig {
     samples_per_pixel: u16,   // Count of random samples for each pixel
     pixel_samples_scale: f64, // Scale factor to convert pixel samples to color intensity
     max_depth: u16,           // Maximum number of ray bounces into scene
+    vfov: f64,
+    look_from: Point3,  // Point camera is looking from
+    look_at: Point3,    // Point camera is looking at
+    vup: Vec3,          // Camera-relative "up" direction
+    defocus_angle: f64, // Variation angle of rays through each pixel
+    focus_dist: f64,    // Distance from camera lookfrom point to plane of perfect focus
+}
+
+impl Default for CameraConfig {
+    fn default() -> Self {
+        Self {
+            image_width: 100,
+            aspect_ratio: 16.0 / 9.0,
+            samples_per_pixel: 10,
+            pixel_samples_scale: 0.1,
+            max_depth: 10,
+            vfov: 90.0,
+            look_from: Point3::new(0.0, 0.0, 0.0),
+            look_at: Point3::new(0.0, 0.0, -1.0),
+            vup: Vec3::new(0.0, 1.0, 0.0),
+            defocus_angle: 0.0,
+            focus_dist: 10.0,
+        }
+    }
 }
 
 impl CameraConfig {
-    pub fn new(image_width: u64, aspect_ratio: f64, samples_per_pixel: u16, max_depth: u16) -> Self {
-        Self {
-            image_width,
-            aspect_ratio,
-            samples_per_pixel,
-            pixel_samples_scale: 1.0 / (samples_per_pixel as f64),
-            max_depth: max_depth,
-        }
+    pub fn image_width(mut self, width: u64) -> Self {
+        self.image_width = width;
+        self
+    }
+
+    pub fn aspect_ratio(mut self, ratio: f64) -> Self {
+        self.aspect_ratio = ratio;
+        self
+    }
+
+    pub fn samples_per_pixel(mut self, samples: u16) -> Self {
+        self.samples_per_pixel = samples;
+        // scale değerini de burada otomatik güncelliyoruz
+        self.pixel_samples_scale = 1.0 / (samples as f64);
+        self
+    }
+
+    pub fn max_depth(mut self, depth: u16) -> Self {
+        self.max_depth = depth;
+        self
+    }
+
+    pub fn vfov(mut self, vfov: f64) -> Self {
+        self.vfov = vfov;
+        self
+    }
+
+    pub fn look_from(mut self, look_from: Point3) -> Self {
+        self.look_from = look_from;
+        self
+    }
+
+    pub fn look_at(mut self, look_at: Point3) -> Self {
+        self.look_at = look_at;
+        self
+    }
+
+    pub fn vup(mut self, vup: Vec3) -> Self {
+        self.vup = vup;
+        self
+    }
+
+    pub fn defocus_angle(mut self, angle: f64) -> Self {
+        self.defocus_angle = angle;
+        self
+    }
+
+    pub fn focus_dist(mut self, dist: f64) -> Self {
+        self.focus_dist = dist;
+        self
     }
 }
 
@@ -29,6 +100,8 @@ pub struct Camera {
     pixel00_loc: Point3, // Location of pixel 0, 0
     pixel_delta_u: Vec3, // Offset to pixel to the right
     pixel_delta_v: Vec3, // Offset to pixel below
+    defocus_disk_u: Vec3,
+    defocus_disk_v: Vec3,
 }
 
 impl Camera {
@@ -38,14 +111,22 @@ impl Camera {
             image_height = 1;
         }
 
-        let focal_length = 1.0;
-        let viewport_height = 2.0;
+        let center = config.look_from;
+        let look_direction = config.look_from - config.look_at;
+
+        let theta = degrees_to_radians(config.vfov);
+        let h = (theta / 2.0).tan();
+        let viewport_height = 2.0 * h * config.focus_dist;
         let viewport_width = viewport_height * (config.image_width as f64 / image_height as f64);
-        let center = Point3::new(0.0, 0.0, 0.0);
+
+        // Calculate the u,v,w unit basis vectors for the camera coordinate frame.
+        let w = unit_vector(look_direction);
+        let u = unit_vector(config.vup.cross(&w));
+        let v = w.cross(&u);
 
         // Calculate the vectors across the horizontal and down the vertical viewport edges.
-        let viewport_u = Vec3::new(viewport_width, 0.0, 0.0);
-        let viewport_v = Vec3::new(0.0, -viewport_height, 0.0);
+        let viewport_u = viewport_width * u;
+        let viewport_v = viewport_height * -v;
 
         // Calculate the horizontal and vertical delta vectors from pixel to pixel.
         let pixel_delta_u = viewport_u / config.image_width;
@@ -53,8 +134,12 @@ impl Camera {
 
         // Calculate the location of the upper left pixel.
         let viewport_upper_left =
-            center - Vec3::new(0.0, 0.0, focal_length) - viewport_u / 2 - viewport_v / 2;
+            center - (config.focus_dist * w) - viewport_u / 2 - viewport_v / 2;
         let pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
+
+        // Calculate the camera defocus disk basis vectors.
+        let defocus_radius =
+            config.focus_dist * (degrees_to_radians(config.defocus_angle) / 2.0).tan();
 
         Self {
             config,
@@ -63,6 +148,8 @@ impl Camera {
             pixel00_loc: pixel00_loc,
             pixel_delta_u: pixel_delta_u,
             pixel_delta_v: pixel_delta_v,
+            defocus_disk_u: u * defocus_radius,
+            defocus_disk_v: v * defocus_radius,
         }
     }
 
@@ -90,7 +177,11 @@ impl Camera {
             + ((i as f64 + offset.x()) * self.pixel_delta_u)
             + ((j as f64 + offset.y()) * self.pixel_delta_v);
 
-        let ray_origin = self.center;
+        let ray_origin = if self.config.defocus_angle < 0.0 {
+            self.center
+        } else {
+            self.defocus_disk_sample()
+        };
         let ray_direction = pixel_sample - ray_origin;
         Ray::new(ray_origin, ray_direction)
     }
@@ -102,7 +193,7 @@ impl Camera {
 
         if let Some(rec) = world.hit(ray, Interval::new(0.001, rtweekend::INFINITY)) {
             if let Some((attenuation, scattered)) = rec.mat.scatter(&ray, &rec) {
-                return attenuation * self.ray_color(&scattered, depth-1, world);
+                return attenuation * self.ray_color(&scattered, depth - 1, world);
             }
 
             return BLACK;
@@ -113,5 +204,10 @@ impl Camera {
         let unit_direction = unit_vector(ray.direction());
         let a = 0.5 * (unit_direction.y() + 1.0);
         return (1.0 - a) * Color::new(1.0, 1.0, 1.0) + a * Color::new(0.5, 0.7, 1.0);
+    }
+
+    fn defocus_disk_sample(&self) -> Point3 {
+        let p = random_in_unit_disk();
+        self.center + (p[0] * self.defocus_disk_u) + (p[1] * self.defocus_disk_v)
     }
 }

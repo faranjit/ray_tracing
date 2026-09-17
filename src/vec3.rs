@@ -92,6 +92,14 @@ impl Vec3 {
         let s = 1e-8;
         self.e[0].abs() < s && self.e[1].abs() < s && self.e[2].abs() < s
     }
+
+    #[inline(always)]
+    pub fn refract(&self, n: Vec3, etai_over_etat: f64) -> Vec3 {
+        let cos_theta = -(self).dot(n).min(1.0);
+        let r_out_perp = etai_over_etat * (*self + (cos_theta * n));
+        let r_out_parallel = -((1.0 - r_out_perp.len_squared()).abs().sqrt()) * n;
+        r_out_perp + r_out_parallel
+    }
 }
 
 #[inline(always)]
@@ -106,6 +114,20 @@ pub fn random_unit_vector() -> Vec3 {
         let lensq = p.len_squared();
         if 1e-160 < lensq && lensq <= 1.0 {
             return p / lensq.sqrt();
+        }
+    }
+}
+
+#[inline(always)]
+pub fn random_in_unit_disk() -> Vec3 {
+    loop {
+        let p = Vec3::new(
+            random_double_range(-1.0, 1.0),
+            random_double_range(-1.0, 1.0),
+            0.0,
+        );
+        if p.len_squared() < 1.0 {
+            return p;
         }
     }
 }
