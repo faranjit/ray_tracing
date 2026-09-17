@@ -1,7 +1,18 @@
+#[derive(Clone, Copy)]
 pub struct Interval {
     min: f64,
     max: f64,
 }
+
+pub const EMPTY: Interval = Interval {
+    min: f64::INFINITY,
+    max: f64::NEG_INFINITY,
+};
+
+pub const UNIVERSE: Interval = Interval {
+    min: f64::NEG_INFINITY,
+    max: f64::INFINITY,
+};
 
 pub const INTENSITY: Interval = Interval {
     min: 0.0,
@@ -10,6 +21,13 @@ pub const INTENSITY: Interval = Interval {
 
 impl Interval {
     pub fn new(min: f64, max: f64) -> Self {
+        Self { min, max }
+    }
+
+    pub fn from_intervals(a: Self, b: Self) -> Self {
+        let min = if a.min <= b.min { a.min } else { b.min };
+        let max = if a.max >= b.max { a.max } else { b.max };
+
         Self { min, max }
     }
 
@@ -33,5 +51,17 @@ impl Interval {
             return self.max;
         }
         return x;
+    }
+
+    pub fn size(&self) -> f64 {
+        self.max - self.min
+    }
+
+    pub fn expand(&self, delta: f64) -> Self {
+        let padding = delta / 2.0;
+        Interval {
+            min: self.min - padding,
+            max: self.max + padding,
+        }
     }
 }

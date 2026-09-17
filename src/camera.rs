@@ -1,10 +1,5 @@
 use crate::{
-    color::{BLACK, Color, write_color},
-    hittable::Hittable,
-    interval::Interval,
-    ray::Ray,
-    rtweekend::{self, degrees_to_radians},
-    vec3::{Point3, Vec3, random_in_unit_disk, unit_vector},
+    color::{BLACK, Color, write_color}, hittable::Hittable, interval::Interval, ray::Ray, rtweekend::{self, degrees_to_radians, random_double}, vec3::{Point3, Vec3, random_in_unit_disk, unit_vector},
 };
 use rayon::prelude::*;
 
@@ -122,8 +117,8 @@ impl Camera {
 
         // Calculate the u,v,w unit basis vectors for the camera coordinate frame.
         let w = unit_vector(look_direction);
-        let u = unit_vector(config.vup.cross(&w));
-        let v = w.cross(&u);
+        let u = unit_vector(config.vup.cross(w));
+        let v = w.cross(u);
 
         // Calculate the vectors across the horizontal and down the vertical viewport edges.
         let viewport_u = viewport_width * u;
@@ -194,7 +189,8 @@ impl Camera {
             self.defocus_disk_sample()
         };
         let ray_direction = pixel_sample - ray_origin;
-        Ray::new(ray_origin, ray_direction)
+        let ray_time = random_double();
+        Ray::new_at_time(ray_origin, ray_direction, ray_time)
     }
 
     fn ray_color(&self, ray: &Ray, depth: u16, world: &dyn Hittable) -> Color {

@@ -10,8 +10,6 @@ pub struct Vec3 {
 }
 
 impl Vec3 {
-    pub const SPHERE_CENTER: Vec3 = Vec3::new(0.0, 0.0, -1.0);
-
     pub const fn new(e0: f64, e1: f64, e2: f64) -> Self {
         Self { e: [e0, e1, e2] }
     }
@@ -62,7 +60,7 @@ impl Vec3 {
     }
 
     #[inline(always)]
-    pub fn cross(&self, rhs: &Vec3) -> Vec3 {
+    pub fn cross(&self, rhs: Vec3) -> Vec3 {
         Vec3 {
             e: [
                 self.e[1] * rhs.e[2] - self.e[2] * rhs.e[1],

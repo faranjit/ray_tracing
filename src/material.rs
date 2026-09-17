@@ -3,10 +3,11 @@ use crate::{
     hittable::HitRecord,
     ray::Ray,
     rtweekend::random_double,
+    texture::{SolidColor, Texture},
     vec3::{random_unit_vector, unit_vector},
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum Material {
     Lambertian(Lambertian),
     Metal(Metal),
@@ -15,7 +16,11 @@ pub enum Material {
 
 impl Material {
     pub fn lambertian(albedo: Color) -> Self {
-        Material::Lambertian(Lambertian::new(albedo))
+        Material::Lambertian(Lambertian::from_color(albedo))
+    }
+
+    pub fn lambertian_texture(tex: Texture) -> Self {
+        Material::Lambertian(Lambertian::new(tex))
     }
 
     pub fn metal(albedo: Color, fuzz: f64) -> Self {
@@ -35,24 +40,31 @@ impl Material {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Lambertian {
-    albedo: Color,
+    tex: Box<Texture>,
 }
 
 impl Lambertian {
-    pub fn new(albedo: Color) -> Self {
-        Self { albedo }
+    pub fn new(tex: Texture) -> Self {
+        Self { tex: Box::new(tex) }
     }
 
-    fn scatter(&self, _: &Ray, rec: &HitRecord) -> Option<(Color, Ray)> {
+    pub fn from_color(albedo: Color) -> Self {
+        Self {
+            tex: Box::new(Texture::SolidColor(SolidColor::new(albedo))),
+        }
+    }
+
+    fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Color, Ray)> {
         let mut scatter_direction = rec.normal + random_unit_vector();
         if scatter_direction.near_zero() {
             scatter_direction = rec.normal;
         }
 
-        let scattered = Ray::new(rec.p, scatter_direction);
-        Some((self.albedo, scattered))
+        let scattered = Ray::new_at_time(rec.p, scatter_direction, r_in.time());
+        let attenuation = self.tex.value(rec.u, rec.v, rec.p);
+        Some((attenuation, scattered))
     }
 }
 
@@ -73,7 +85,7 @@ impl Metal {
     fn scatter(&self, r_in: &Ray, rec: &HitRecord) -> Option<(Color, Ray)> {
         let reflected =
             unit_vector(r_in.direction().reflect(rec.normal)) + (self.fuzz * random_unit_vector());
-        let scattered = Ray::new(rec.p, reflected);
+        let scattered = Ray::new_at_time(rec.p, reflected, r_in.time());
         if scattered.direction().dot(rec.normal) > 0.0 {
             Some((self.albedo, scattered))
         } else {
@@ -114,7 +126,10 @@ impl Dielectric {
             unit_direction.refract(rec.normal, ri)
         };
 
-        Some((self.attenuation, Ray::new(rec.p, direction)))
+        Some((
+            self.attenuation,
+            Ray::new_at_time(rec.p, direction, r_in.time()),
+        ))
     }
 
     fn reflectance(&self, cosine: f64, refraction_index: f64) -> f64 {
