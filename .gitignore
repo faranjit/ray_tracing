@@ -14,4 +14,6 @@ target
 **/mutants.out*/
 
 # rustc will dump stack traces when hitting an internal compiler error to PWD
-rustc-ice-*.txt.DS_Store
+rustc-ice-*.txt
+
+*.DS_Store
