@@ -1,17 +1,23 @@
 use std::ops;
 
-use crate::rtweekend::{random_double, random_double_range};
+use crate::rtweekend::{Real, random_double, random_double_range};
 
 pub type Point3 = Vec3;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Vec3 {
-    e: [f64; 3],
+    e: [Real; 3],
 }
 
 impl Vec3 {
-    pub const fn new(e0: f64, e1: f64, e2: f64) -> Self {
+    pub const ZERO: Self = Self::new(0.0, 0.0, 0.0);
+    
+    pub const fn new(e0: Real, e1: Real, e2: Real) -> Self {
         Self { e: [e0, e1, e2] }
+    }
+
+    pub const fn zero() -> Self {
+        Self::ZERO
     }
 
     pub fn random() -> Self {
@@ -20,7 +26,7 @@ impl Vec3 {
         }
     }
 
-    pub fn random_range(min: f64, max: f64) -> Self {
+    pub fn random_range(min: Real, max: Real) -> Self {
         Vec3 {
             e: [
                 random_double_range(min, max),
@@ -30,23 +36,23 @@ impl Vec3 {
         }
     }
 
-    pub fn x(&self) -> f64 {
+    pub fn x(&self) -> Real {
         self.e[0]
     }
 
-    pub fn y(&self) -> f64 {
+    pub fn y(&self) -> Real {
         self.e[1]
     }
 
-    pub fn z(&self) -> f64 {
+    pub fn z(&self) -> Real {
         self.e[2]
     }
 
-    pub fn len_squared(&self) -> f64 {
+    pub fn len_squared(&self) -> Real {
         self.e[0] * self.e[0] + self.e[1] * self.e[1] + self.e[2] * self.e[2]
     }
 
-    pub fn len(&self) -> f64 {
+    pub fn len(&self) -> Real {
         self.len_squared().sqrt()
     }
 
@@ -54,12 +60,12 @@ impl Vec3 {
         Vec3::new(random_double() - 0.5, random_double() - 0.5, 0.0)
     }
 
-    #[inline(always)]
-    pub fn dot(&self, rhs: Vec3) -> f64 {
+    #[inline]
+    pub fn dot(&self, rhs: Vec3) -> Real {
         self.e[0] * rhs.e[0] + self.e[1] * rhs.e[1] + self.e[2] * rhs.e[2]
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn cross(&self, rhs: Vec3) -> Vec3 {
         Vec3 {
             e: [
@@ -71,52 +77,42 @@ impl Vec3 {
     }
 
     #[inline]
-    pub fn random_on_hemisphere(&self) -> Vec3 {
-        let on_unit_sphere = random_unit_vector();
-        if on_unit_sphere.dot(*self) > 0.0 {
-            on_unit_sphere
-        } else {
-            -on_unit_sphere
-        }
-    }
-
-    #[inline(always)]
     pub fn reflect(&self, n: Vec3) -> Vec3 {
         *self - 2.0 * self.dot(n) * n
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn near_zero(&self) -> bool {
         let s = 1e-8;
         self.e[0].abs() < s && self.e[1].abs() < s && self.e[2].abs() < s
     }
 
-    #[inline(always)]
-    pub fn refract(&self, n: Vec3, etai_over_etat: f64) -> Vec3 {
-        let cos_theta = -(self).dot(n).min(1.0);
+    #[inline]
+    pub fn refract(&self, n: Vec3, etai_over_etat: Real) -> Vec3 {
+        let cos_theta = (-*self).dot(n).min(1.0);
         let r_out_perp = etai_over_etat * (*self + (cos_theta * n));
         let r_out_parallel = -((1.0 - r_out_perp.len_squared()).abs().sqrt()) * n;
         r_out_perp + r_out_parallel
     }
 }
 
-#[inline(always)]
+#[inline]
 pub fn unit_vector(v: Vec3) -> Vec3 {
     v / v.len()
 }
 
-#[inline(always)]
+#[inline]
 pub fn random_unit_vector() -> Vec3 {
     loop {
         let p = Vec3::random_range(-1.0, 1.0);
         let lensq = p.len_squared();
-        if 1e-160 < lensq && lensq <= 1.0 {
+        if 1e-130 < lensq && lensq <= 1.0 {
             return p / lensq.sqrt();
         }
     }
 }
 
-#[inline(always)]
+#[inline]
 pub fn random_in_unit_disk() -> Vec3 {
     loop {
         let p = Vec3::new(
@@ -180,17 +176,17 @@ impl ops::Mul<Vec3> for Vec3 {
     }
 }
 
-impl ops::Mul<f64> for Vec3 {
+impl ops::Mul<Real> for Vec3 {
     type Output = Vec3;
 
-    fn mul(self, rhs: f64) -> Self::Output {
+    fn mul(self, rhs: Real) -> Self::Output {
         Vec3 {
             e: [self.e[0] * rhs, self.e[1] * rhs, self.e[2] * rhs],
         }
     }
 }
 
-impl ops::Mul<Vec3> for f64 {
+impl ops::Mul<Vec3> for Real {
     type Output = Vec3;
 
     fn mul(self, rhs: Vec3) -> Self::Output {
@@ -198,49 +194,26 @@ impl ops::Mul<Vec3> for f64 {
     }
 }
 
-impl ops::Mul<Vec3> for u64 {
-    type Output = Vec3;
-
-    fn mul(self, rhs: Vec3) -> Self::Output {
-        rhs * self as f64
-    }
-}
-
-impl ops::MulAssign<f64> for Vec3 {
-    fn mul_assign(&mut self, rhs: f64) {
+impl ops::MulAssign<Real> for Vec3 {
+    fn mul_assign(&mut self, rhs: Real) {
         self.e[0] *= rhs;
         self.e[1] *= rhs;
         self.e[2] *= rhs;
     }
 }
 
-impl ops::Div<f64> for Vec3 {
+impl ops::Div<Real> for Vec3 {
     type Output = Vec3;
 
-    fn div(self, rhs: f64) -> Self::Output {
+    fn div(self, rhs: Real) -> Self::Output {
         Vec3 {
             e: [self.e[0] / rhs, self.e[1] / rhs, self.e[2] / rhs],
         }
     }
 }
 
-impl ops::Div<u64> for Vec3 {
-    type Output = Vec3;
-
-    fn div(self, rhs: u64) -> Self::Output {
-        let divider = rhs as f64;
-        Vec3 {
-            e: [
-                self.e[0] / divider,
-                self.e[1] / divider,
-                self.e[2] / divider,
-            ],
-        }
-    }
-}
-
-impl ops::DivAssign<f64> for Vec3 {
-    fn div_assign(&mut self, rhs: f64) {
+impl ops::DivAssign<Real> for Vec3 {
+    fn div_assign(&mut self, rhs: Real) {
         self.e[0] /= rhs;
         self.e[1] /= rhs;
         self.e[2] /= rhs;
@@ -258,7 +231,7 @@ impl ops::Neg for Vec3 {
 }
 
 impl ops::Index<usize> for Vec3 {
-    type Output = f64;
+    type Output = Real;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.e[index]

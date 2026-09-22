@@ -1,17 +1,21 @@
+use std::ops;
+
+use crate::rtweekend::Real;
+
 #[derive(Clone, Copy)]
 pub struct Interval {
-    min: f64,
-    max: f64,
+    min: Real,
+    max: Real,
 }
 
 pub const EMPTY: Interval = Interval {
-    min: f64::INFINITY,
-    max: f64::NEG_INFINITY,
+    min: Real::INFINITY,
+    max: Real::NEG_INFINITY,
 };
 
 pub const UNIVERSE: Interval = Interval {
-    min: f64::NEG_INFINITY,
-    max: f64::INFINITY,
+    min: Real::NEG_INFINITY,
+    max: Real::INFINITY,
 };
 
 pub const INTENSITY: Interval = Interval {
@@ -20,7 +24,7 @@ pub const INTENSITY: Interval = Interval {
 };
 
 impl Interval {
-    pub fn new(min: f64, max: f64) -> Self {
+    pub fn new(min: Real, max: Real) -> Self {
         Self { min, max }
     }
 
@@ -31,37 +35,51 @@ impl Interval {
         Self { min, max }
     }
 
-    pub fn min(&self) -> f64 {
+    pub fn min(&self) -> Real {
         self.min
     }
 
-    pub fn max(&self) -> f64 {
+    pub fn max(&self) -> Real {
         self.max
     }
 
-    pub fn surrounds(&self, x: f64) -> bool {
+    pub fn surrounds(&self, x: Real) -> bool {
         self.min < x && x < self.max
     }
 
-    pub fn clamp(&self, x: f64) -> f64 {
-        if x < self.min {
-            return self.min;
-        }
-        if x > self.max {
-            return self.max;
-        }
-        return x;
+    pub fn contains(&self, x: Real) -> bool {
+        self.min <= x && x <= self.max
     }
 
-    pub fn size(&self) -> f64 {
+    pub fn clamp(&self, x: Real) -> Real {
+        x.clamp(self.min, self.max)
+    }
+
+    pub fn size(&self) -> Real {
         self.max - self.min
     }
 
-    pub fn expand(&self, delta: f64) -> Self {
+    pub fn expand(&self, delta: Real) -> Self {
         let padding = delta / 2.0;
         Interval {
             min: self.min - padding,
             max: self.max + padding,
         }
+    }
+}
+
+impl ops::Add<Real> for Interval {
+    type Output = Interval;
+
+    fn add(self, rhs: Real) -> Self::Output {
+        Interval::new(self.min + rhs, self.max + rhs)
+    }
+}
+
+impl ops::Add<Interval> for Real {
+    type Output = Interval;
+
+    fn add(self, rhs: Interval) -> Self::Output {
+        rhs + self
     }
 }

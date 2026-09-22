@@ -115,3 +115,88 @@ A running log of progress on this project. Written after each work session - mai
 
 - Fixed a bug in the bounding box (AABB) calculation for moving spheres. The box for the second time step was calculating from the wrong center. This fixed the visual clipping and made the motion blur look correct.
 - Reading pixels using the `image` crate's `get_pixel()` method was slowing down the render. I optimized this by converting the image into a flat 1D byte array (`Vec<u8>`) on load. Reading pixels directly using `(y * width + x) * 3` improved the speed significantly.
+
+---
+
+## Sessin 7 - 19.09.2026
+
+**Book progress:** Ray Tracing: The Next Week - finished the book (Chapters 5 - 10)
+
+**What I did:**
+
+- Added Perlin noise, turbulence, and the marble texture.
+- Implemented Quad and built the Cornell Box.
+- Added DiffuseLight and a background color on the camera.
+- Added Translate and RotateY for instances.
+- Added ConstantMedium and Isotropic for smoke, rendered cornell_smoke.
+- Rendered the final scene of the book.
+- Replaced println! per pixel with a BufWriter on stdout.
+- Added render timing and a progress counter on stderr.
+
+**Things I ran into / fixed:**
+
+- Perlin noise came out dark and veiny instead of the book's camo pattern. I was using `Vec3::random()` for the gradient vectors, which only gives the positive octant. Book uses random(-1,1). All vectors pointing the same way kills the noise.
+- Cornell Box was much darker and noisier than the book's. `Quad::hit` was passing a zero normal into HitRecord. With a zero normal, Lambertian scatters over the whole sphere instead of the hemisphere, so half the rays go through the wall and hit the black background.
+- After that I changed `HitRecord::new` to take the ray and work out `front_face` itself. Now callers can't get it wrong.
+- Boxes disappeared after `RotateY` but still cast shadows. Wrong sign on x when rotating the ray origin into object space. Direction had the right sign, origin didn't, so the ray was not a valid ray anymore.
+- Also had `(i - 1)` instead of `(1 - i)` in the `RotateY` bbox loop. Doesn't show in this scene because every box starts at the origin, but it would break anything else.
+- Broke Perlin again when I switched the permutation tables to fixed arrays. Arrays are `Copy`, so `permute(perm)` shuffled a copy and dropped it. Changed it to `&mut [usize]`.
+
+**Performance work:**
+
+- Replaced HitRecord's owned Material with a &'a Material borrow. Most of those clones were redundant because of HittableList::hit when a closer hit was found.
+- Final scene rendered in 2270.6s on the first attempt. To be measured again...
+
+**Notes to self:**
+
+- Using `map` when dealing with `Option`s makes life easier.
+- Final scene was rendered in 2270.6s in the first attempt, will be measured again after performance improvements.
+- `map` only works when there is a single exit. `ConstantMedium::hit` has four separate early returns, and trying to express it with nested map calls goes nowhere. Luckily, Rust has `?` operator: returning `None` if it is none or unwrapping the value.
+- `let Some(rec) = ... else { return ... };` is another useful thing.
+- Lifetimes are not only for structs that look like parsers. Lifetime elision covers almost every call site. `fn hit(&self, ...) -> Option<HitRecord<'_>>` needs writing, and `&HitRecord in Material::scatter` needs no change.
+- `split_at_mut` lets a recursive tree builder borrow both halves of a slice at once, which removes the need to pass start and end indices around like the C++ code does.
+
+---
+
+## Session 8 - 20.09.2026
+
+**Profiling and performance**
+
+**What I did:**
+
+- Tried `cargo flamegraph` first. Doesn't work on macOS without Xcode, `xctrace` is missing with only Command Line Tools installed. Switched to `samply`, which needs nothing extra.
+- Profiled `final_scene(200, 100, 10)` and looked at the inverted call stack.
+- Replaced `powf(5.0)` in `Dielectric::reflectance` with plain multiplication.
+- Made UV calculation lazy. Added `needs_uv()` on `Texture` and `Material`, so `Sphere::hit` only calls `get_sphere_uv` when something actually reads u and v.
+- BVH now tries the near child first, based on the ray's direction along the split axis. Store `axis` on the node for that.
+- Dropped `Ray` from `Sphere`. Now it holds `center` and `center_vec`, and `center_at` is just `center + time * center_vec`. Removed the `is_moving` flag too, the multiply is cheaper than the branch.
+- Tried `Box<Quad>` in the `Object` enum to shrink it from 112 to 80 bytes. Measured worse and reverted.
+- Tried `with_min_len` on the rayon iterator. No difference.
+
+**What the profile said:**
+
+- 80% self time in `Object::hit`. Everything is inlined into it: `ray_color`, `Sphere::hit`, `Quad::hit`, `Aabb::hit`, `BVHNode::hit`. Can't see inside, but at least LTO is doing its job.
+- 11% in `libsystem_m`, all called from `Object::hit`. That's `powf`, `acos` and `atan2`.
+- 6% rayon.
+
+**Things I ran into / fixed:**
+
+- Found a real bug while rewriting `reflectance`. The book does `r0 = r0*r0;` and then uses the squared value on the next line. I had `(r0 * r0) + (1.0 - r0) * ...`, so the second `r0` was not squared. Wrong Fresnel term on every glass surface.
+- `with_min_len` doesn't exist for `u64` ranges. Rayon only implements the indexed iterator for `usize`, `i32` and friends.
+- Deadlocked myself while adding debug prints. `println!` inside the rayon closure wants the stdout lock, but the main thread was already holding it through a `BufWriter`. Every worker blocked, main waited on `collect()`, nothing moved. Now stdout is only locked after the render is done.
+- The progress counter was also wrong for a while: `fetch_max` called twice, and `<=` instead of `<`, so it printed on every pixel and stderr contention ate the render.
+
+**Measurements** (`final_scene(400, 400, 20)`, M1 Pro):
+
+- 13.1s wall, 111s user time.
+- `Box<Quad>` version: same 13.1s wall but 118s user. Slower, reverted.
+- CPU sits around 810%. Looks low for 10 cores but the M1 Pro has 8 performance and 2 efficiency cores, so the performance cores are full.
+
+**Notes to self:**
+
+- Guessing at optimizations is a waste of time. `powf` and the UV work were both reasonable guesses and neither showed up in the timings. Learning to read a profiler is probably the most useful thing I got out of this project.
+- Wall time hides things. Both enum versions finished in 13.1s, but user time said one of them burned 7% more CPU. Look at both.
+- Don't hold a stdout lock while parallel code runs.
+- Never use `println!` for debugging in a parallel render. `eprintln!` only, and even that will drown the render if it's in the inner loop.
+
+---

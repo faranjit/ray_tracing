@@ -1,17 +1,19 @@
+use std::ops;
+
 use crate::{
     interval::{EMPTY, Interval, UNIVERSE},
     ray::Ray,
-    vec3::Point3,
+    vec3::{Point3, Vec3},
 };
 
 #[derive(Clone, Copy)]
-pub struct AABB {
-    x: Interval,
-    y: Interval,
-    z: Interval,
+pub struct Aabb {
+    pub x: Interval,
+    pub y: Interval,
+    pub z: Interval,
 }
 
-impl AABB {
+impl Aabb {
     pub const fn empty() -> Self {
         Self {
             x: EMPTY,
@@ -29,7 +31,7 @@ impl AABB {
     }
 
     pub fn new(x: Interval, y: Interval, z: Interval) -> Self {
-        Self { x, y, z }
+        Self::pad_to_minimums(x, y, z)
     }
 
     pub fn from_points(a: Point3, b: Point3) -> Self {
@@ -51,7 +53,7 @@ impl AABB {
             Interval::new(b[2], a[2])
         };
 
-        Self { x, y, z }
+        Self::pad_to_minimums(x, y, z)
     }
 
     pub fn from_boxes(box0: &Self, box1: &Self) -> Self {
@@ -80,40 +82,48 @@ impl AABB {
     }
 
     pub fn hit(&self, r: &Ray, ray_t: &Interval) -> bool {
-        let ray_orig = r.origin();
-        let ray_dir = r.direction();
-
+        let orig = r.origin();
         let mut min = ray_t.min();
         let mut max = ray_t.max();
 
         for axis in 0..3 {
             let ax = self.axis_interval(axis);
-            let adinv = 1.0 / ray_dir[axis];
+            let adinv = r.inv_direction()[axis];
+            let t0 = (ax.min() - orig[axis]) * adinv;
+            let t1 = (ax.max() - orig[axis]) * adinv;
 
-            let t0 = (ax.min() - ray_orig[axis]) * adinv;
-            let t1 = (ax.max() - ray_orig[axis]) * adinv;
-
-            if t0 < t1 {
-                if t0 > min {
-                    min = t0;
-                }
-                if t1 < max {
-                    max = t1;
-                }
-            } else {
-                if t1 > min {
-                    min = t1;
-                }
-                if t0 < max {
-                    max = t0;
-                }
-            }
+            min = min.max(t0.min(t1));
+            max = max.min(t0.max(t1));
 
             if max <= min {
                 return false;
             }
         }
+        true
+    }
 
-        return true;
+    fn pad_to_minimums(x: Interval, y: Interval, z: Interval) -> Self {
+        let delta = 0.0001;
+        Self {
+            x: if x.size() < delta { x.expand(delta) } else { x },
+            y: if y.size() < delta { y.expand(delta) } else { y },
+            z: if z.size() < delta { z.expand(delta) } else { z },
+        }
+    }
+}
+
+impl ops::Add<Vec3> for Aabb {
+    type Output = Aabb;
+
+    fn add(self, rhs: Vec3) -> Self::Output {
+        Aabb::new(self.x + rhs.x(), self.y + rhs.y(), self.z + rhs.z())
+    }
+}
+
+impl ops::Add<Aabb> for Vec3 {
+    type Output = Aabb;
+
+    fn add(self, rhs: Aabb) -> Self::Output {
+        rhs + self
     }
 }

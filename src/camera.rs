@@ -1,20 +1,33 @@
+use std::{
+    io::{self, BufWriter, Write},
+    sync::atomic::{AtomicU64, Ordering},
+    thread,
+    time::{Duration, Instant},
+};
+
 use crate::{
-    color::{BLACK, Color, write_color}, hittable::Hittable, interval::Interval, ray::Ray, rtweekend::{self, degrees_to_radians, random_double}, vec3::{Point3, Vec3, random_in_unit_disk, unit_vector},
+    color::{BLACK, Color, write_color},
+    hittable::Hittable,
+    interval::Interval,
+    ray::Ray,
+    rtweekend::{INFINITY, Real, degrees_to_radians, random_double},
+    vec3::{Point3, Vec3, random_in_unit_disk, unit_vector},
 };
 use rayon::prelude::*;
 
 pub struct CameraConfig {
-    image_width: u64,         // Rendered image width in pixel count
-    aspect_ratio: f64,        // Ratio of image width over height
-    samples_per_pixel: u16,   // Count of random samples for each pixel
-    pixel_samples_scale: f64, // Scale factor to convert pixel samples to color intensity
-    max_depth: u16,           // Maximum number of ray bounces into scene
-    vfov: f64,
-    look_from: Point3,  // Point camera is looking from
-    look_at: Point3,    // Point camera is looking at
-    vup: Vec3,          // Camera-relative "up" direction
-    defocus_angle: f64, // Variation angle of rays through each pixel
-    focus_dist: f64,    // Distance from camera lookfrom point to plane of perfect focus
+    image_width: u64,          // Rendered image width in pixel count
+    aspect_ratio: Real,        // Ratio of image width over height
+    samples_per_pixel: u32,    // Count of random samples for each pixel
+    pixel_samples_scale: Real, // Scale factor to convert pixel samples to color intensity
+    max_depth: u16,            // Maximum number of ray bounces into scene
+    vfov: Real,
+    look_from: Point3,   // Point camera is looking from
+    look_at: Point3,     // Point camera is looking at
+    vup: Vec3,           // Camera-relative "up" direction
+    defocus_angle: Real, // Variation angle of rays through each pixel
+    focus_dist: Real,    // Distance from camera lookfrom point to plane of perfect focus
+    background: Color,   // Scene background color
 }
 
 impl Default for CameraConfig {
@@ -31,6 +44,7 @@ impl Default for CameraConfig {
             vup: Vec3::new(0.0, 1.0, 0.0),
             defocus_angle: 0.0,
             focus_dist: 10.0,
+            background: BLACK,
         }
     }
 }
@@ -41,15 +55,14 @@ impl CameraConfig {
         self
     }
 
-    pub fn aspect_ratio(mut self, ratio: f64) -> Self {
+    pub fn aspect_ratio(mut self, ratio: Real) -> Self {
         self.aspect_ratio = ratio;
         self
     }
 
-    pub fn samples_per_pixel(mut self, samples: u16) -> Self {
+    pub fn samples_per_pixel(mut self, samples: u32) -> Self {
         self.samples_per_pixel = samples;
-        // scale değerini de burada otomatik güncelliyoruz
-        self.pixel_samples_scale = 1.0 / (samples as f64);
+        self.pixel_samples_scale = 1.0 / (samples as Real);
         self
     }
 
@@ -58,7 +71,7 @@ impl CameraConfig {
         self
     }
 
-    pub fn vfov(mut self, vfov: f64) -> Self {
+    pub fn vfov(mut self, vfov: Real) -> Self {
         self.vfov = vfov;
         self
     }
@@ -78,20 +91,25 @@ impl CameraConfig {
         self
     }
 
-    pub fn defocus_angle(mut self, angle: f64) -> Self {
+    pub fn defocus_angle(mut self, angle: Real) -> Self {
         self.defocus_angle = angle;
         self
     }
 
-    pub fn focus_dist(mut self, dist: f64) -> Self {
+    pub fn focus_dist(mut self, dist: Real) -> Self {
         self.focus_dist = dist;
+        self
+    }
+
+    pub fn background(mut self, background: Color) -> Self {
+        self.background = background;
         self
     }
 }
 
 pub struct Camera {
     config: CameraConfig,
-    image_height: u64,   // rendered image height
+    image_height: u64,   // Rendered image height
     center: Point3,      // Camera center
     pixel00_loc: Point3, // Location of pixel 0, 0
     pixel_delta_u: Vec3, // Offset to pixel to the right
@@ -102,10 +120,7 @@ pub struct Camera {
 
 impl Camera {
     pub fn initialize(config: CameraConfig) -> Self {
-        let mut image_height = (config.image_width as f64 / config.aspect_ratio) as u64;
-        if image_height < 1 {
-            image_height = 1;
-        }
+        let image_height = ((config.image_width as Real / config.aspect_ratio) as u64).max(1);
 
         let center = config.look_from;
         let look_direction = config.look_from - config.look_at;
@@ -113,7 +128,7 @@ impl Camera {
         let theta = degrees_to_radians(config.vfov);
         let h = (theta / 2.0).tan();
         let viewport_height = 2.0 * h * config.focus_dist;
-        let viewport_width = viewport_height * (config.image_width as f64 / image_height as f64);
+        let viewport_width = viewport_height * (config.image_width as Real / image_height as Real);
 
         // Calculate the u,v,w unit basis vectors for the camera coordinate frame.
         let w = unit_vector(look_direction);
@@ -125,12 +140,12 @@ impl Camera {
         let viewport_v = viewport_height * -v;
 
         // Calculate the horizontal and vertical delta vectors from pixel to pixel.
-        let pixel_delta_u = viewport_u / config.image_width;
-        let pixel_delta_v = viewport_v / image_height;
+        let pixel_delta_u = viewport_u / config.image_width as Real;
+        let pixel_delta_v = viewport_v / image_height as Real;
 
         // Calculate the location of the upper left pixel.
         let viewport_upper_left =
-            center - (config.focus_dist * w) - viewport_u / 2 - viewport_v / 2;
+            center - (config.focus_dist * w) - viewport_u / 2.0 - viewport_v / 2.0;
         let pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
 
         // Calculate the camera defocus disk basis vectors.
@@ -139,39 +154,70 @@ impl Camera {
 
         Self {
             config,
-            image_height: image_height,
-            center: center,
-            pixel00_loc: pixel00_loc,
-            pixel_delta_u: pixel_delta_u,
-            pixel_delta_v: pixel_delta_v,
+            image_height,
+            center,
+            pixel00_loc,
+            pixel_delta_u,
+            pixel_delta_v,
             defocus_disk_u: u * defocus_radius,
             defocus_disk_v: v * defocus_radius,
         }
     }
 
     pub fn render(&self, world: &(impl Hittable + Sync)) {
-        println!("P3\n{} {}\n255", self.config.image_width, self.image_height);
+        let start = Instant::now();
+        let total_pixels = (self.image_height * self.config.image_width) as usize;
+        let width = self.config.image_width as usize;
+        let done = AtomicU64::new(0);
 
-        // parallelize the rendering
-        let pixels: Vec<Color> = (0..self.image_height)
-            .into_par_iter()
-            .flat_map(|j| {
-                (0..self.config.image_width)
-                    .map(move |i| {
-                        let mut pixel_color = BLACK;
-                        for _ in 0..self.config.samples_per_pixel {
-                            let ray = self.get_ray(i, j);
-                            pixel_color += self.ray_color(&ray, self.config.max_depth, world);
-                        }
-                        pixel_color * self.config.pixel_samples_scale
-                    })
-                    .collect::<Vec<Color>>()
-            })
-            .collect();
+        // The progress thread reads the counter once a second. The render threads
+        // only touch an atomic, so they never wait on stderr.
+        let pixels: Vec<Color> = thread::scope(|s| {
+            s.spawn(|| {
+                loop {
+                    let n = done.load(Ordering::Relaxed);
+                    eprint!("\rprogress: {n}/{total_pixels}");
+                    if n >= total_pixels as u64 {
+                        break;
+                    }
+                    thread::sleep(Duration::from_secs(1));
+                }
+            });
 
-        // sequential rendering
+            (0..total_pixels)
+                .into_par_iter()
+                .with_min_len(256)
+                .map(|idx| {
+                    let j = (idx / width) as u64;
+                    let i = (idx % width) as u64;
+
+                    let mut pixel_color = BLACK;
+                    for _ in 0..self.config.samples_per_pixel {
+                        let ray = self.get_ray(i, j);
+                        pixel_color += self.ray_color(&ray, world);
+                    }
+
+                    done.fetch_add(1, Ordering::Relaxed);
+                    pixel_color * self.config.pixel_samples_scale
+                })
+                .collect()
+        });
+
+        eprintln!("\rrendered in {:.1?}{:20}", start.elapsed(), "");
+
+        // stdout is locked only after every thread is done.
+        let stdout = io::stdout();
+        let mut out = BufWriter::new(stdout.lock());
+
+        writeln!(
+            out,
+            "P3\n{} {}\n255",
+            self.config.image_width, self.image_height
+        )
+        .unwrap();
+
         for pixel_color in pixels {
-            write_color(pixel_color);
+            write_color(&mut out, pixel_color).unwrap();
         }
     }
 
@@ -180,37 +226,45 @@ impl Camera {
         // point around the pixel location i, j.
         let offset = Vec3::sample_square();
         let pixel_sample = self.pixel00_loc
-            + ((i as f64 + offset.x()) * self.pixel_delta_u)
-            + ((j as f64 + offset.y()) * self.pixel_delta_v);
+            + ((i as Real + offset.x()) * self.pixel_delta_u)
+            + ((j as Real + offset.y()) * self.pixel_delta_v);
 
-        let ray_origin = if self.config.defocus_angle < 0.0 {
+        let ray_origin = if self.config.defocus_angle <= 0.0 {
             self.center
         } else {
             self.defocus_disk_sample()
         };
-        let ray_direction = pixel_sample - ray_origin;
-        let ray_time = random_double();
-        Ray::new_at_time(ray_origin, ray_direction, ray_time)
+
+        Ray::new_at_time(ray_origin, pixel_sample - ray_origin, random_double())
     }
 
-    fn ray_color(&self, ray: &Ray, depth: u16, world: &dyn Hittable) -> Color {
-        if depth <= 0 {
-            return BLACK;
-        }
+    fn ray_color<H: Hittable>(&self, ray: &Ray, world: &H) -> Color {
+        let mut ray = *ray;
+        let mut attenuation = Color::new(1.0, 1.0, 1.0);
+        let mut emitted_total = BLACK;
 
-        if let Some(rec) = world.hit(ray, Interval::new(0.001, rtweekend::INFINITY)) {
-            if let Some((attenuation, scattered)) = rec.mat.scatter(&ray, &rec) {
-                return attenuation * self.ray_color(&scattered, depth - 1, world);
+        for _ in 0..self.config.max_depth {
+            let Some(rec) = world.hit(&ray, Interval::new(0.001, INFINITY)) else {
+                return emitted_total + attenuation * self.config.background;
+            };
+
+            emitted_total += attenuation * rec.mat.emitted(rec.u, rec.v, rec.p);
+
+            let Some((att, scattered)) = rec.mat.scatter(&ray, &rec) else {
+                return emitted_total;
+            };
+
+            attenuation = attenuation * att;
+            ray = scattered;
+
+            // Russian-roulette style cutoff: once the path can no longer
+            // contribute a visible amount, stop tracing it.
+            if attenuation.len_squared() < 1e-8 {
+                return emitted_total;
             }
-
-            return BLACK;
-            // let direction = rec.normal + random_unit_vector();
-            // return 0.1 * self.ray_color(&Ray::new(rec.p, direction), depth - 1, world);
         }
 
-        let unit_direction = unit_vector(ray.direction());
-        let a = 0.5 * (unit_direction.y() + 1.0);
-        return (1.0 - a) * Color::new(1.0, 1.0, 1.0) + a * Color::new(0.5, 0.7, 1.0);
+        emitted_total
     }
 
     fn defocus_disk_sample(&self) -> Point3 {

@@ -1,18 +1,27 @@
-pub const INFINITY: f64 = f64::INFINITY;
+use fastrand_contrib::fastrand;
 
-pub const PI: f64 = 3.1415926535897932385;
+pub type Real = f32;
+
+pub const INFINITY: Real = f32::INFINITY;
+
+pub const PI: Real = 3.1415926535897932385;
 
 #[inline]
-pub const fn degrees_to_radians(degrees: f64) -> f64 {
+pub const fn degrees_to_radians(degrees: Real) -> Real {
     degrees * PI / 180.0
 }
 
-#[inline(always)]
-pub fn random_double() -> f64 {
-    fastrand_contrib::f64_range(0.0..1.0)
+#[inline]
+pub fn random_double() -> Real {
+    fastrand::f32()
 }
 
-#[inline(always)]
-pub fn random_double_range(min: f64, max: f64) -> f64 {
+#[inline]
+pub fn random_double_range(min: Real, max: Real) -> Real {
     min + (max - min) * random_double()
+}
+
+#[inline]
+pub fn random_int_range(min: usize, max: usize) -> usize {
+    fastrand::usize(min..=max)
 }
