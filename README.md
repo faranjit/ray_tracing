@@ -57,8 +57,10 @@ To pick a scene, change the number in the `match` inside `main()` in `main.rs`. 
 
 ## Progress
 
-- [x] Ray Tracing in One Weekend
-- [x] Ray Tracing: The Next Week
+The default branch has the latest book I finished. Earlier books stay in their own branches, so you can see what the code looked like at the end of each one.
+
+- [x] Ray Tracing in One Weekend (branch `in-one-weekend`)
+- [x] Ray Tracing: The Next Week (default branch)
 - [ ] Ray Tracing: The Rest of Your Life
 
 ## Credits
