@@ -17,4 +17,6 @@ target
 rustc-ice-*.txt
 
 image.ppm
-main
+main.
+
+*.DS_Store
